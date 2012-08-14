@@ -28,6 +28,9 @@ func Record(name string, value float64) {
 	if *verbose {
 		log.Printf("stats.Value(%s, %f)", name, value)
 	}
+	if backend == nil {
+		return
+	}
 	backend.Record(name, value)
 }
 
@@ -35,6 +38,9 @@ func Record(name string, value float64) {
 func Count(name string, count int) {
 	if *verbose {
 		log.Printf("stats.Count(%s, %d)", name, count)
+	}
+	if backend == nil {
+		return
 	}
 	backend.Count(name, count)
 }
