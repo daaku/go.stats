@@ -8,7 +8,8 @@ import (
 )
 
 type EZKey struct {
-	Key string
+	Key   string
+	Debug bool
 }
 
 func (e *EZKey) Count(name string, count int) {
@@ -16,12 +17,18 @@ func (e *EZKey) Count(name string, count int) {
 	if err != nil {
 		log.Printf("Failed to PostEZCount: %s", err)
 	}
+	if e.Debug {
+		log.Printf("stats.Count(%s, %d)", name, count)
+	}
 }
 
 func (e *EZKey) Record(name string, value float64) {
 	err := stathat.PostEZValue(name, e.Key, value)
 	if err != nil {
 		log.Printf("Failed to PostEZCount: %s", err)
+	}
+	if e.Debug {
+		log.Printf("stats.Record(%s, %f)", name, value)
 	}
 }
 
@@ -34,5 +41,6 @@ func (e *EZKey) Inc(name string) {
 func EZKeyFlag(name string) *EZKey {
 	e := &EZKey{}
 	flag.StringVar(&e.Key, name+".key", "", name+" ezkey")
+	flag.BoolVar(&e.Debug, name+".debug", false, name+" debug logging")
 	return e
 }
