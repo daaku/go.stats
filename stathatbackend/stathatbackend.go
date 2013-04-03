@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -35,13 +36,15 @@ type apiResponse struct {
 type EZKey struct {
 	Key                   string        // your StatHat EZ Key
 	Debug                 bool          // enable logging of stat calls
-	DialTimeout           time.Duration // timeout for net dial (inc dns resolution)
+	DialTimeout           time.Duration // timeout for net dial
 	ResponseHeaderTimeout time.Duration // timeout for http read/write
 	MaxIdleConns          int           // max idle http connections
 	BatchTimeout          time.Duration // timeout for batching stats
+	MaxBatchSize          int           // max items in a batch
 	ChannelSize           int           // buffer size until we begin blocking
 	stats                 chan interface{}
 	closed                chan bool
+	client                *http.Client
 }
 
 func (e *EZKey) Count(name string, count int) {
@@ -67,58 +70,15 @@ func (e *EZKey) process() {
 	if e.Debug {
 		log.Println("stathatbackend: started background process")
 	}
-	const url = "http://api.stathat.com/ez"
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			Dial: func(network, addr string) (net.Conn, error) {
-				return net.DialTimeout(network, addr, e.DialTimeout)
-			},
-			ResponseHeaderTimeout: e.ResponseHeaderTimeout,
-			MaxIdleConnsPerHost:   e.MaxIdleConns,
-		},
-	}
 
 	var batchTimeout <-chan time.Time
 	batch := &apiRequest{EZKey: e.Key}
-	apiResp := apiResponse{}
 	for {
 		select {
 		case <-batchTimeout:
-			if e.Debug {
-				log.Printf("stathatbackend: sending batch with %d items", len(batch.Data))
-			}
-			j, err := json.Marshal(batch)
-			if err != nil {
-				log.Printf("stathatbackend: error json encoding request: %s", err)
-				continue
-			}
-			if e.Debug {
-				log.Printf("stathatbackend: request: %s", j)
-			}
-			batch.Data = nil
+			go e.sendBatchLog(batch)
+			batch = &apiRequest{EZKey: e.Key}
 			batchTimeout = nil
-			req, err := http.NewRequest("POST", url, bytes.NewReader(j))
-			if err != nil {
-				log.Printf("stathatbackend: error creating request: %s", err)
-				continue
-			}
-			req.Header.Add("Content-Type", "application/json")
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Printf("stathatbackend: error performing request: %s", err)
-				continue
-			}
-			err = json.NewDecoder(resp.Body).Decode(&apiResp)
-			if err != nil {
-				log.Printf("stathatbackend: error reading decoding response: %s", err)
-			}
-			if apiResp.Status != 200 {
-				log.Printf("stathatbackend: api error: %+v", &apiResp)
-			} else if e.Debug {
-				log.Printf("stathatbackend: api response: %+v", &apiResp)
-			}
-			resp.Body.Close()
 		case stat, ok := <-e.stats:
 			if e.Debug {
 				if cs, ok := stat.(countStat); ok {
@@ -132,21 +92,78 @@ func (e *EZKey) process() {
 				if e.Debug {
 					log.Println("stathatbackend: process closed")
 				}
+				e.sendBatchLog(batch)
 				return
 			}
 			batch.Data = append(batch.Data, stat)
 			if batchTimeout == nil {
 				batchTimeout = time.After(e.BatchTimeout)
 			}
+			if len(batch.Data) >= e.MaxBatchSize {
+				go e.sendBatchLog(batch)
+				batch = &apiRequest{EZKey: e.Key}
+				batchTimeout = nil
+			}
 		}
 	}
 	close(e.closed)
+}
+
+func (e *EZKey) sendBatchLog(batch *apiRequest) {
+	if err := e.sendBatch(batch); err != nil {
+		log.Printf("stathatbackend: error sending batch: %s", err)
+	}
+}
+
+func (e *EZKey) sendBatch(batch *apiRequest) error {
+	const url = "http://api.stathat.com/ez"
+	if e.Debug {
+		log.Printf("stathatbackend: sending batch with %d items", len(batch.Data))
+	}
+	j, err := json.Marshal(batch)
+	if err != nil {
+		return fmt.Errorf("stathatbackend: error json encoding request: %s", err)
+	}
+	if e.Debug {
+		log.Printf("stathatbackend: request: %s", j)
+	}
+	req, err := http.NewRequest("POST", url, bytes.NewReader(j))
+	if err != nil {
+		return fmt.Errorf("stathatbackend: error creating request: %s", err)
+	}
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("stathatbackend: error performing request: %s", err)
+	}
+	defer resp.Body.Close()
+	var apiResp apiResponse
+	err = json.NewDecoder(resp.Body).Decode(&apiResp)
+	if err != nil {
+		return fmt.Errorf("stathatbackend: error decoding response: %s", err)
+	}
+	if apiResp.Status != 200 {
+		return fmt.Errorf("stathatbackend: api error: %+v", &apiResp)
+	} else if e.Debug {
+		log.Printf("stathatbackend: api response: %+v", &apiResp)
+	}
+	return nil
 }
 
 // Start the background goroutine for handling the actual HTTP requests.
 func (e *EZKey) Start() {
 	e.stats = make(chan interface{}, e.ChannelSize)
 	e.closed = make(chan bool)
+	e.client = &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			Dial: func(network, addr string) (net.Conn, error) {
+				return net.DialTimeout(network, addr, e.DialTimeout)
+			},
+			ResponseHeaderTimeout: e.ResponseHeaderTimeout,
+			MaxIdleConnsPerHost:   e.MaxIdleConns,
+		},
+	}
 	go e.process()
 }
 
@@ -185,6 +202,12 @@ func EZKeyFlag(name string) *EZKey {
 		name+".batch-timeout",
 		10*time.Second,
 		name+" amount of time to aggregate a batch",
+	)
+	flag.IntVar(
+		&e.MaxBatchSize,
+		name+".max-batch-size",
+		500,
+		name+" maximum number of items in a batch",
 	)
 	flag.IntVar(
 		&e.ChannelSize,
