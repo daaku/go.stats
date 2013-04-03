@@ -28,8 +28,9 @@ type apiRequest struct {
 }
 
 type apiResponse struct {
-	Status  int    `json:"status"`
-	Message string `json:"msg"`
+	Status   int    `json:"status"`
+	Message  string `json:"msg"`
+	Multiple int    `json:"multiple"`
 }
 
 type EZKey struct {
@@ -109,21 +110,18 @@ func (e *EZKey) process() {
 				log.Printf("stathatbackend: error performing request: %s", err)
 				continue
 			}
-			defer resp.Body.Close()
-			defer client.FinishRequest(req)
-			if resp.StatusCode != 200 {
-				log.Printf("stathatbackend: non 200 response: %d", resp.StatusCode)
-				continue
-			}
 			err = json.NewDecoder(resp.Body).Decode(&apiResp)
 			if err != nil {
 				log.Printf("stathatbackend: error reading decoding response: %s", err)
-				continue
+			}
+			if e.Debug {
+				log.Printf("stathatbackend: api response: %v", &apiResp)
 			}
 			if apiResp.Status != 200 {
-				log.Printf("stathatbackend: api error: %v", apiResp)
-				continue
+				log.Printf("stathatbackend: api error: %v", &apiResp)
 			}
+			resp.Body.Close()
+			client.FinishRequest(req)
 		case stat, ok := <-e.stats:
 			if !ok {
 				if e.Debug {
