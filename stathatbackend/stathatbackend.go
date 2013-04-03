@@ -61,12 +61,6 @@ func (e *EZKey) Inc(name string) {
 
 // Actually send the stats to stathat.
 func (e *EZKey) process() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("recovered in EZKey.process: %v", r)
-		}
-	}()
-
 	if e.Debug {
 		log.Println("stathatbackend: started background process")
 	}
