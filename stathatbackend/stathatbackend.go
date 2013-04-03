@@ -113,11 +113,10 @@ func (e *EZKey) process() {
 			if err != nil {
 				log.Printf("stathatbackend: error reading decoding response: %s", err)
 			}
-			if e.Debug {
-				log.Printf("stathatbackend: api response: %+v", &apiResp)
-			}
 			if apiResp.Status != 200 {
 				log.Printf("stathatbackend: api error: %+v", &apiResp)
+			} else if e.Debug {
+				log.Printf("stathatbackend: api response: %+v", &apiResp)
 			}
 			resp.Body.Close()
 		case stat, ok := <-e.stats:
