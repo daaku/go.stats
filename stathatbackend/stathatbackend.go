@@ -6,10 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"time"
-
-	"github.com/mreiferson/go-httpclient"
 )
 
 type countStat struct {
@@ -34,15 +33,15 @@ type apiResponse struct {
 }
 
 type EZKey struct {
-	Key              string        // your StatHat EZ Key
-	Debug            bool          // enable logging of stat calls
-	ConnectTimeout   time.Duration // timeout for http connect
-	ReadWriteTimeout time.Duration // timeout for http read/write
-	MaxConnections   int           // max simultaneous http connections
-	BatchTimeout     time.Duration // timeout for batching stats
-	BufferSize       int           // buffer size until we begin blocking
-	stats            chan interface{}
-	closed           chan bool
+	Key                   string        // your StatHat EZ Key
+	Debug                 bool          // enable logging of stat calls
+	DialTimeout           time.Duration // timeout for net dial (inc dns resolution)
+	ResponseHeaderTimeout time.Duration // timeout for http read/write
+	MaxIdleConns          int           // max idle http connections
+	BatchTimeout          time.Duration // timeout for batching stats
+	ChannelSize           int           // buffer size until we begin blocking
+	stats                 chan interface{}
+	closed                chan bool
 }
 
 func (e *EZKey) Count(name string, count int) {
@@ -69,11 +68,16 @@ func (e *EZKey) process() {
 		log.Println("stathatbackend: started background process")
 	}
 	const url = "http://api.stathat.com/ez"
-	client := httpclient.New()
-	client.ConnectTimeout = e.ConnectTimeout
-	client.ReadWriteTimeout = e.ReadWriteTimeout
-	client.MaxConnsPerHost = e.MaxConnections
-	client.Verbose = e.Debug
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			Dial: func(network, addr string) (net.Conn, error) {
+				return net.DialTimeout(network, addr, e.DialTimeout)
+			},
+			ResponseHeaderTimeout: e.ResponseHeaderTimeout,
+			MaxIdleConnsPerHost:   e.MaxIdleConns,
+		},
+	}
 
 	var batchTimeout <-chan time.Time
 	batch := &apiRequest{EZKey: e.Key}
@@ -89,7 +93,9 @@ func (e *EZKey) process() {
 				log.Printf("stathatbackend: error json encoding request: %s", err)
 				continue
 			}
-			log.Printf("json: %s", j)
+			if e.Debug {
+				log.Printf("stathatbackend: request: %s", j)
+			}
 			batch.Data = nil
 			batchTimeout = nil
 			req, err := http.NewRequest("POST", url, bytes.NewReader(j))
@@ -114,7 +120,6 @@ func (e *EZKey) process() {
 				log.Printf("stathatbackend: api error: %+v", &apiResp)
 			}
 			resp.Body.Close()
-			client.FinishRequest(req)
 		case stat, ok := <-e.stats:
 			if e.Debug {
 				if cs, ok := stat.(countStat); ok {
@@ -141,7 +146,7 @@ func (e *EZKey) process() {
 
 // Start the background goroutine for handling the actual HTTP requests.
 func (e *EZKey) Start() {
-	e.stats = make(chan interface{}, e.BufferSize)
+	e.stats = make(chan interface{}, e.ChannelSize)
 	e.closed = make(chan bool)
 	go e.process()
 }
@@ -159,28 +164,34 @@ func EZKeyFlag(name string) *EZKey {
 	flag.StringVar(&e.Key, name+".key", "", name+" ezkey")
 	flag.BoolVar(&e.Debug, name+".debug", false, name+" debug logging")
 	flag.DurationVar(
-		&e.ConnectTimeout,
-		name+".http-connect-timeout",
+		&e.DialTimeout,
+		name+".http-dial-timeout",
 		1*time.Second,
-		name+" http connect timeout",
+		name+" http dial timeout",
 	)
 	flag.DurationVar(
-		&e.ReadWriteTimeout,
-		name+".http-read-write-timeout",
-		10*time.Second,
-		name+" http read/write timeout",
+		&e.ResponseHeaderTimeout,
+		name+".http-response-header-timeout",
+		3*time.Second,
+		name+" http response header timeout",
+	)
+	flag.IntVar(
+		&e.MaxIdleConns,
+		name+".max-idle-conns",
+		10,
+		name+" max idle connections to StatHat",
 	)
 	flag.DurationVar(
 		&e.BatchTimeout,
 		name+".batch-timeout",
 		10*time.Second,
-		name+" batch timeout",
+		name+" amount of time to aggregate a batch",
 	)
 	flag.IntVar(
-		&e.BufferSize,
-		name+".buffer-size",
+		&e.ChannelSize,
+		name+".channel-buffer-size",
 		10000,
-		name+" buffer size",
+		name+" channel buffer size",
 	)
 	return e
 }
