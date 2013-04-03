@@ -41,6 +41,7 @@ type EZKey struct {
 	BatchTimeout     time.Duration // timeout for batching stats
 	BufferSize       int           // buffer size until we begin blocking
 	stats            chan interface{}
+	closed           chan bool
 }
 
 func (e *EZKey) Count(name string, count int) {
@@ -139,17 +140,20 @@ func (e *EZKey) process() {
 			}
 		}
 	}
+	close(e.closed)
 }
 
 // Start the background goroutine for handling the actual HTTP requests.
 func (e *EZKey) Start() {
 	e.stats = make(chan interface{}, e.BufferSize)
+	e.closed = make(chan bool)
 	go e.process()
 }
 
 // Close the background goroutine.
 func (e *EZKey) Close() error {
 	close(e.stats)
+	<-e.closed
 	return nil
 }
 
