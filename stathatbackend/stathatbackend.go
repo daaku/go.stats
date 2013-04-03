@@ -124,8 +124,6 @@ func (e *EZKey) process() {
 					log.Printf("stathatbackend: Value(%s, %f)", vs.Name, vs.Value)
 				}
 			}
-			if e.Debug {
-			}
 			if !ok {
 				if e.Debug {
 					log.Println("stathatbackend: process closed")
