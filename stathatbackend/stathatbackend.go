@@ -47,19 +47,12 @@ type EZKey struct {
 
 func (e *EZKey) Count(name string, count int) {
 	e.stats <- countStat{Name: name, Count: count}
-	if e.Debug {
-		log.Printf("stats.Count(%s, %d)", name, count)
-	}
 }
 
 func (e *EZKey) Record(name string, value float64) {
 	e.stats <- valueStat{Name: name, Value: value}
-	if e.Debug {
-		log.Printf("stats.Record(%s, %f)", name, value)
-	}
 }
 
-// Increment counter by 1.
 func (e *EZKey) Inc(name string) {
 	e.Count(name, 1)
 }
@@ -115,22 +108,29 @@ func (e *EZKey) process() {
 				log.Printf("stathatbackend: error reading decoding response: %s", err)
 			}
 			if e.Debug {
-				log.Printf("stathatbackend: api response: %v", &apiResp)
+				log.Printf("stathatbackend: api response: %+v", &apiResp)
 			}
 			if apiResp.Status != 200 {
-				log.Printf("stathatbackend: api error: %v", &apiResp)
+				log.Printf("stathatbackend: api error: %+v", &apiResp)
 			}
 			resp.Body.Close()
 			client.FinishRequest(req)
 		case stat, ok := <-e.stats:
+			if e.Debug {
+				if cs, ok := stat.(countStat); ok {
+					log.Printf("stathatbackend: Count(%s, %d)", cs.Name, cs.Count)
+				}
+				if vs, ok := stat.(valueStat); ok {
+					log.Printf("stathatbackend: Value(%s, %f)", vs.Name, vs.Value)
+				}
+			}
+			if e.Debug {
+			}
 			if !ok {
 				if e.Debug {
 					log.Println("stathatbackend: process closed")
 				}
 				return
-			}
-			if e.Debug {
-				log.Println("stathatbackend: got stat")
 			}
 			batch.Data = append(batch.Data, stat)
 			if batchTimeout == nil {
