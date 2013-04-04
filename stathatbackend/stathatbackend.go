@@ -43,7 +43,7 @@ type EZKey struct {
 	MaxBatchSize          int           // max items in a batch
 	ChannelSize           int           // buffer size until we begin blocking
 	stats                 chan interface{}
-	closed                chan bool
+	closed                chan error
 	client                *http.Client
 }
 
@@ -105,7 +105,7 @@ func (e *EZKey) process() {
 
 func (e *EZKey) sendBatchLog(batch *apiRequest) {
 	if err := e.sendBatch(batch); err != nil {
-		log.Printf("stathatbackend: error sending batch: %s", err)
+		log.Println(err)
 	}
 }
 
@@ -128,7 +128,7 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("stathatbackend: error performing request: %s", err)
+		return fmt.Errorf("stathatbackend: %s", err)
 	}
 	defer resp.Body.Close()
 	var apiResp apiResponse
@@ -147,7 +147,7 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 // Start the background goroutine for handling the actual HTTP requests.
 func (e *EZKey) Start() {
 	e.stats = make(chan interface{}, e.ChannelSize)
-	e.closed = make(chan bool)
+	e.closed = make(chan error)
 	e.client = &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -164,8 +164,7 @@ func (e *EZKey) Start() {
 // Close the background goroutine.
 func (e *EZKey) Close() error {
 	close(e.stats)
-	<-e.closed
-	return nil
+	return <-e.closed
 }
 
 // A Flag configured EZKey instance.
