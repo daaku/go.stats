@@ -110,6 +110,9 @@ func (e *EZKey) sendBatchLog(batch *apiRequest) {
 }
 
 func (e *EZKey) sendBatch(batch *apiRequest) error {
+	if len(batch) == 0 {
+		return nil
+	}
 	const url = "http://api.stathat.com/ez"
 	if e.Debug {
 		log.Printf("stathatbackend: sending batch with %d items", len(batch.Data))
