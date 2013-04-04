@@ -73,7 +73,7 @@ func (e *EZKey) process() {
 			go e.sendBatchLog(batch)
 			batch = &apiRequest{EZKey: e.Key}
 			batchTimeout = nil
-		case stat, ok := <-e.stats:
+		case stat, open := <-e.stats:
 			if e.Debug {
 				if cs, ok := stat.(countStat); ok {
 					log.Printf("stathatbackend: Count(%s, %d)", cs.Name, cs.Count)
@@ -82,7 +82,7 @@ func (e *EZKey) process() {
 					log.Printf("stathatbackend: Value(%s, %f)", vs.Name, vs.Value)
 				}
 			}
-			if !ok {
+			if !open {
 				if e.Debug {
 					log.Println("stathatbackend: process closed")
 				}
