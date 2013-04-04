@@ -121,12 +121,7 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 	if e.Debug {
 		log.Printf("stathatbackend: request: %s", j)
 	}
-	req, err := http.NewRequest("POST", url, bytes.NewReader(j))
-	if err != nil {
-		return fmt.Errorf("stathatbackend: error creating request: %s", err)
-	}
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := e.client.Do(req)
+	resp, err := e.client.Post(url, "application/json", bytes.NewReader(j))
 	if err != nil {
 		return fmt.Errorf("stathatbackend: %s", err)
 	}
