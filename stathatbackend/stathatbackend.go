@@ -87,6 +87,7 @@ func (e *EZKey) process() {
 					log.Println("stathatbackend: process closed")
 				}
 				e.sendBatchLog(batch)
+				close(e.closed)
 				return
 			}
 			batch.Data = append(batch.Data, stat)
@@ -100,7 +101,7 @@ func (e *EZKey) process() {
 			}
 		}
 	}
-	close(e.closed)
+	panic("not reached")
 }
 
 func (e *EZKey) sendBatchLog(batch *apiRequest) {
