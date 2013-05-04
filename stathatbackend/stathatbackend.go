@@ -2,13 +2,14 @@
 package stathatbackend
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -113,18 +114,28 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 	if len(batch.Data) == 0 {
 		return nil
 	}
-	const url = "http://api.stathat.com/ez"
 	if e.Debug {
 		log.Printf("stathatbackend: sending batch with %d items", len(batch.Data))
 	}
-	j, err := json.Marshal(batch)
-	if err != nil {
-		return fmt.Errorf("stathatbackend: error json encoding request: %s", err)
-	}
+	var reader io.Reader
+	reader, writer := io.Pipe()
 	if e.Debug {
-		log.Printf("stathatbackend: request: %s", j)
+		reader = io.TeeReader(reader, os.Stdout)
 	}
-	resp, err := e.client.Post(url, "application/json", bytes.NewReader(j))
+	req, err := http.NewRequest("POST", "http://api.stathat.com/ez", reader)
+	if err != nil {
+		return fmt.Errorf("stathatbackend: error creating http request: %s", err)
+	}
+	req.Header.Add("Content-Type", "application/json")
+	go func() {
+		err := json.NewEncoder(writer).Encode(batch)
+		if err != nil {
+			writer.CloseWithError(err)
+		} else {
+			writer.Close()
+		}
+	}()
+	resp, err := e.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("stathatbackend: %s", err)
 	}
