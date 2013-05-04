@@ -101,7 +101,6 @@ func (e *EZKey) process() {
 			}
 		}
 	}
-	panic("not reached")
 }
 
 func (e *EZKey) sendBatchLog(batch *apiRequest) {
@@ -147,12 +146,11 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 func (e *EZKey) Start() {
 	e.stats = make(chan interface{}, e.ChannelSize)
 	e.closed = make(chan error)
+	dialer := net.Dialer{Timeout: e.DialTimeout}
 	e.client = &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
-			Dial: func(network, addr string) (net.Conn, error) {
-				return net.DialTimeout(network, addr, e.DialTimeout)
-			},
+			Dial:  dialer.Dial,
 			ResponseHeaderTimeout: e.ResponseHeaderTimeout,
 			MaxIdleConnsPerHost:   e.MaxIdleConns,
 		},
