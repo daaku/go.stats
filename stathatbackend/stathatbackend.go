@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"time"
@@ -25,7 +24,7 @@ type valueStat struct {
 
 type apiRequest struct {
 	EZKey string        `json:"ezkey"`
-	Data  []interface{} `json:"data"`
+	Data  []interface{} `json:"data"` // countStat or valueStat
 }
 
 type apiResponse struct {
@@ -34,18 +33,19 @@ type apiResponse struct {
 	Multiple int    `json:"multiple"`
 }
 
+type HttpClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type EZKey struct {
-	Key                   string        // your StatHat EZ Key
-	Debug                 bool          // enable logging of stat calls
-	DialTimeout           time.Duration // timeout for net dial
-	ResponseHeaderTimeout time.Duration // timeout for http read/write
-	MaxIdleConns          int           // max idle http connections
-	BatchTimeout          time.Duration // timeout for batching stats
-	MaxBatchSize          int           // max items in a batch
-	ChannelSize           int           // buffer size until we begin blocking
-	stats                 chan interface{}
-	closed                chan error
-	client                *http.Client
+	Key          string        // your StatHat EZ Key
+	Debug        bool          // enable logging of stat calls
+	BatchTimeout time.Duration // timeout for batching stats
+	MaxBatchSize int           // max items in a batch
+	ChannelSize  int           // buffer size until we begin blocking
+	Client       HttpClient
+	stats        chan interface{} // countStat or valueStat
+	closed       chan error
 }
 
 func (e *EZKey) Count(name string, count int) {
@@ -135,7 +135,7 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 			writer.Close()
 		}
 	}()
-	resp, err := e.client.Do(req)
+	resp, err := e.Client.Do(req)
 	if err != nil {
 		return fmt.Errorf("stathatbackend: %s", err)
 	}
@@ -154,19 +154,11 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 }
 
 // Start the background goroutine for handling the actual HTTP requests.
-func (e *EZKey) Start() {
+func (e *EZKey) Start() error {
 	e.stats = make(chan interface{}, e.ChannelSize)
 	e.closed = make(chan error)
-	dialer := net.Dialer{Timeout: e.DialTimeout}
-	e.client = &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			Dial:  dialer.Dial,
-			ResponseHeaderTimeout: e.ResponseHeaderTimeout,
-			MaxIdleConnsPerHost:   e.MaxIdleConns,
-		},
-	}
 	go e.process()
+	return nil
 }
 
 // Close the background goroutine.
@@ -181,24 +173,6 @@ func EZKeyFlag(name string) *EZKey {
 	flag.StringVar(&e.Key, name+".key", "", name+" ezkey")
 	flag.BoolVar(&e.Debug, name+".debug", false, name+" debug logging")
 	flag.DurationVar(
-		&e.DialTimeout,
-		name+".http-dial-timeout",
-		1*time.Second,
-		name+" http dial timeout",
-	)
-	flag.DurationVar(
-		&e.ResponseHeaderTimeout,
-		name+".http-response-header-timeout",
-		3*time.Second,
-		name+" http response header timeout",
-	)
-	flag.IntVar(
-		&e.MaxIdleConns,
-		name+".max-idle-conns",
-		10,
-		name+" max idle connections to StatHat",
-	)
-	flag.DurationVar(
 		&e.BatchTimeout,
 		name+".batch-timeout",
 		10*time.Second,
@@ -207,7 +181,7 @@ func EZKeyFlag(name string) *EZKey {
 	flag.IntVar(
 		&e.MaxBatchSize,
 		name+".max-batch-size",
-		500,
+		1000,
 		name+" maximum number of items in a batch",
 	)
 	flag.IntVar(

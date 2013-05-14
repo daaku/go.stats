@@ -1,0 +1,3 @@
+- use WaitGroup and correctly wait for sendBatch goroutines on Close
+- limit number of sendBatch goroutines
+- total request timeout
