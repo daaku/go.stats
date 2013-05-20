@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
+
+	"github.com/daaku/go.jsonpipe"
 )
 
 type countStat struct {
@@ -117,24 +117,14 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 	if e.Debug {
 		log.Printf("stathatbackend: sending batch with %d items", len(batch.Data))
 	}
-	var reader io.Reader
-	reader, writer := io.Pipe()
-	if e.Debug {
-		reader = io.TeeReader(reader, os.Stdout)
-	}
-	req, err := http.NewRequest("POST", "http://api.stathat.com/ez", reader)
+
+	const url = "http://api.stathat.com/ez"
+	req, err := http.NewRequest("POST", url, jsonpipe.Encode(batch))
 	if err != nil {
 		return fmt.Errorf("stathatbackend: error creating http request: %s", err)
 	}
 	req.Header.Add("Content-Type", "application/json")
-	go func() {
-		err := json.NewEncoder(writer).Encode(batch)
-		if err != nil {
-			writer.CloseWithError(err)
-		} else {
-			writer.Close()
-		}
-	}()
+
 	resp, err := e.Client.Do(req)
 	if err != nil {
 		return fmt.Errorf("stathatbackend: %s", err)
