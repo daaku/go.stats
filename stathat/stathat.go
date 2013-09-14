@@ -1,5 +1,5 @@
 // Implements a stathat backend for go.stats.
-package stathatbackend
+package stathat
 
 import (
 	"encoding/json"
