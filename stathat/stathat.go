@@ -33,17 +33,13 @@ type apiResponse struct {
 	Multiple int    `json:"multiple"`
 }
 
-type HttpClient interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
 type EZKey struct {
 	Key          string        // your StatHat EZ Key
 	Debug        bool          // enable logging of stat calls
 	BatchTimeout time.Duration // timeout for batching stats
 	MaxBatchSize int           // max items in a batch
 	ChannelSize  int           // buffer size until we begin blocking
-	Client       HttpClient
+	Transport    http.RoundTripper
 	stats        chan interface{} // countStat or valueStat
 	closed       chan error
 }
@@ -125,7 +121,7 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 	}
 	req.Header.Add("Content-Type", "application/json")
 
-	resp, err := e.Client.Do(req)
+	resp, err := e.Transport.RoundTrip(req)
 	if err != nil {
 		return fmt.Errorf("stathatbackend: %s", err)
 	}
