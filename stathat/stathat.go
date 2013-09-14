@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/daaku/go.jsonpipe"
@@ -42,13 +43,16 @@ type EZKey struct {
 	Transport    http.RoundTripper
 	stats        chan interface{} // countStat or valueStat
 	closed       chan error
+	startOnce    sync.Once
 }
 
 func (e *EZKey) Count(name string, count int) {
+	e.startOnce.Do(e.start)
 	e.stats <- countStat{Name: name, Count: count}
 }
 
 func (e *EZKey) Record(name string, value float64) {
+	e.startOnce.Do(e.start)
 	e.stats <- valueStat{Name: name, Value: value}
 }
 
@@ -140,11 +144,10 @@ func (e *EZKey) sendBatch(batch *apiRequest) error {
 }
 
 // Start the background goroutine for handling the actual HTTP requests.
-func (e *EZKey) Start() error {
+func (e *EZKey) start() {
 	e.stats = make(chan interface{}, e.ChannelSize)
 	e.closed = make(chan error)
 	go e.process()
-	return nil
 }
 
 // Close the background goroutine.
