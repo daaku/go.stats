@@ -70,10 +70,6 @@ func (e *EZKey) process() {
 	batch := &apiRequest{EZKey: e.Key}
 	for {
 		select {
-		case <-batchTimeout:
-			go e.sendBatchLog(batch)
-			batch = &apiRequest{EZKey: e.Key}
-			batchTimeout = nil
 		case stat, open := <-e.stats:
 			if e.Debug {
 				if cs, ok := stat.(countStat); ok {
@@ -100,6 +96,10 @@ func (e *EZKey) process() {
 				batch = &apiRequest{EZKey: e.Key}
 				batchTimeout = nil
 			}
+		case <-batchTimeout:
+			go e.sendBatchLog(batch)
+			batch = &apiRequest{EZKey: e.Key}
+			batchTimeout = nil
 		}
 	}
 }
