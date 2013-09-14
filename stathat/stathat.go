@@ -1,4 +1,4 @@
-// Implements a stathat backend for go.stats.
+// Package stathat implements a stathat backend for go.stats.
 package stathat
 
 import (
