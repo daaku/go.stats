@@ -44,8 +44,9 @@ func (c *Client) Start() error {
 	c.muster.MaxBatchSize = c.MaxBatchSize
 	c.muster.BatchTimeout = c.BatchTimeout
 	c.muster.PendingWorkCapacity = c.PendingWorkCapacity
-	c.muster.BatchMaker = muster.BatchMakerFunc(
-		func() muster.Batch { return &batch{Client: c} })
+	c.muster.BatchMaker = func() muster.Batch {
+		return &batch{Client: c, Key: c.Key}
+	}
 	return c.muster.Start()
 }
 
