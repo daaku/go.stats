@@ -33,8 +33,8 @@ type Client struct {
 	Key                 string        // your StatHat EZ Key
 	Debug               bool          // enable logging of stat calls
 	BatchTimeout        time.Duration // timeout for batching stats
-	MaxBatchSize        int           // max items in a batch
-	PendingWorkCapacity int           // buffer size until we begin blocking
+	MaxBatchSize        uint          // max items in a batch
+	PendingWorkCapacity uint          // buffer size until we begin blocking
 	Transport           http.RoundTripper
 	muster              muster.Client
 }
@@ -81,13 +81,13 @@ func ClientFlag(name string) *Client {
 		10*time.Second,
 		name+" amount of time to aggregate a batch",
 	)
-	flag.IntVar(
+	flag.UintVar(
 		&c.MaxBatchSize,
 		name+".max-batch-size",
 		1000,
 		name+" maximum number of items in a batch",
 	)
-	flag.IntVar(
+	flag.UintVar(
 		&c.PendingWorkCapacity,
 		name+".pending-work-capacity",
 		10000,
