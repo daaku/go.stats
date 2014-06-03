@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/daaku/go.jsonpipe"
-	"github.com/daaku/go.muster"
+	"github.com/facebookgo/jsonpipe"
+	"github.com/facebookgo/muster"
 )
 
 type countStat struct {
